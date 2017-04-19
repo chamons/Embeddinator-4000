@@ -355,6 +355,12 @@
       <Link>error.md</Link>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="sdf\sdf.csproj">
+      <Project>{B4B002D1-66A2-4283-ADC5-1C27B11D7EE0}</Project>
+      <Name>sdf</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="BeforeBuild" Inputs="..\.git\logs\HEAD;generate-version.sh" Outputs="Version.generated.cs">
     <Exec Command="./generate-version.sh" />
