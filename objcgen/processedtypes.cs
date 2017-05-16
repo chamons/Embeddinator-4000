@@ -153,7 +153,7 @@ namespace Embeddinator {
 		// get a name that is safe to use from ObjC code
 
 		// HACK - This should take a ProcessedMemberBase and not much of this stuff - https://github.com/mono/Embeddinator-4000/issues/276
-		public string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
+		public virtual string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
 		{
 			// FIXME - GetSignatures likley should be specialized in subclasses
 			bool isOperator = (this is ProcessedMethod) ? ((ProcessedMethod)this).IsOperator : false;
@@ -168,9 +168,8 @@ namespace Embeddinator {
 			for (int n = 0; n < end; ++n) {
 				ParameterInfo p = parameters[n];
 
-				if (objc.Length > objName.Length) {
+				if (objc.Length > objName.Length)
 					objc.Append (' ');
-				}
 
 				string paramName = FallBackToTypeName ? NameGenerator.GetParameterTypeName (p.ParameterType) : p.Name;
 				if ((method != null) && (n > 0 || !isExtension)) {
@@ -191,27 +190,17 @@ namespace Embeddinator {
 			return objc.ToString ();
 		}
 
-		public string GetMonoSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
+		public virtual string GetMonoSignature (string monoName, ParameterInfo[] parameters)
 		{
-			// FIXME - GetSignatures likley should be specialized in subclasses
-			bool isOperator = (this is ProcessedMethod) ? ((ProcessedMethod)this).IsOperator : false;
-			var method = (info as MethodBase); // else it's a PropertyInfo
-											   // special case for setter-only - the underscore looks ugly
-			if ((method != null) && method.IsSpecialName)
-				objName = objName.Replace ("_", String.Empty);
-
 			var mono = new StringBuilder (monoName);
 
 			mono.Append ('(');
 
 			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
 			for (int n = 0; n < end; ++n) {
-				ParameterInfo p = parameters[n];
-			
 				if (n > 0)
 					mono.Append (',');
-
-				mono.Append (NameGenerator.GetMonoName (p.ParameterType));
+				mono.Append (NameGenerator.GetMonoName (parameters[n].ParameterType));
 			}
 
 			mono.Append (')');
@@ -250,7 +239,7 @@ namespace Embeddinator {
 		{
 			// FIXME this is a quite crude hack waiting for a correct move of the signature code
 			ObjCSignature = GetObjcSignature (BaseName, Method.Name, Method, Method.GetParameters (), false);
-			MonoSignature = GetMonoSignature (BaseName, Method.Name, Method, Method.GetParameters (), false);
+			MonoSignature = GetMonoSignature (Method.Name, Method.GetParameters ());
 		}
 
 		public override string ToString () => ToString (Method);
@@ -297,7 +286,7 @@ namespace Embeddinator {
 		{
 			// FIXME this is a quite crude hack waiting for a correct move of the signature code
 			ObjCSignature = GetObjcSignature (Constructor.ParameterCount == 0 ? "init" : "initWith", Constructor.Name, Constructor, Constructor.GetParameters (), false);
-			MonoSignature = GetMonoSignature (Constructor.ParameterCount == 0 ? "init" : "initWith", Constructor.Name, Constructor, Constructor.GetParameters (), false);
+			MonoSignature = GetMonoSignature (Constructor.Name, Constructor.GetParameters ());
 		}
 
 		public override string ToString () => ToString (Constructor);

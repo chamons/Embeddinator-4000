@@ -310,7 +310,7 @@ namespace ObjC {
 					string signature = ".ctor()";
 					if (parameters.Length > 0) {
 						name = ctor.GetObjcSignature ("initWith", ctor.Constructor.Name, ctor.Constructor, parameters, false);
-						signature = ctor.GetMonoSignature ("initWith", ctor.Constructor.Name, ctor.Constructor, parameters, false);
+						signature = ctor.GetMonoSignature (ctor.Constructor.Name, parameters);
 					}
 
 					if (ctor.Unavailable) {
@@ -946,7 +946,7 @@ namespace ObjC {
 			var parametersInfo = info.GetParameters ();
 
 			objcsig = method.GetObjcSignature (name, managed_name, (MemberInfo)pi ?? info, parametersInfo, isExtension);
-			monosig = method.GetMonoSignature (name, managed_name, (MemberInfo)pi ?? info, parametersInfo, isExtension);
+			monosig = method.GetMonoSignature (managed_name, parametersInfo);
 
 			var builder = new MethodHelper (headers, implementation) {
 				AssemblySafeName = type.Assembly.GetName ().Name.Sanitize (),
@@ -1023,7 +1023,7 @@ namespace ObjC {
 				name = method.BaseName;
 
 			objcsig = member.GetObjcSignature (name, mb.Name, mb, plist.ToArray (), false);
-			monosig = member.GetMonoSignature(name, mb.Name, mb, plist.ToArray (), false);
+			monosig = member.GetMonoSignature (mb.Name, plist.ToArray ());
 
 			var type = mb.DeclaringType;
 
