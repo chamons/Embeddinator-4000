@@ -155,13 +155,6 @@ namespace Embeddinator {
 		// HACK - This should take a ProcessedMemberBase and not much of this stuff - https://github.com/mono/Embeddinator-4000/issues/276
 		public virtual string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
 		{
-			// FIXME - GetSignatures likley should be specialized in subclasses
-			bool isOperator = (this is ProcessedMethod) ? ((ProcessedMethod)this).IsOperator : false;
-			var method = (info as MethodBase); // else it's a PropertyInfo
-											   // special case for setter-only - the underscore looks ugly
-			if ((method != null) && method.IsSpecialName)
-				objName = objName.Replace ("_", String.Empty);
-
 			var objc = new StringBuilder (objName);
 
 			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
@@ -172,14 +165,6 @@ namespace Embeddinator {
 					objc.Append (' ');
 
 				string paramName = FallBackToTypeName ? NameGenerator.GetParameterTypeName (p.ParameterType) : p.Name;
-				if ((method != null) && (n > 0 || !isExtension)) {
-					if (n == 0) {
-						if (FallBackToTypeName || method.IsConstructor || (!method.IsSpecialName && !isOperator))
-							objc.Append (paramName.PascalCase ());
-					}
-					else
-						objc.Append (paramName.CamelCase ());
-				}
 
 				if (n > 0 || !isExtension) {
 					string ptname = NameGenerator.GetObjCParamTypeName (p, Processor.Types);
@@ -243,6 +228,40 @@ namespace Embeddinator {
 		}
 
 		public override string ToString () => ToString (Method);
+
+		// HACK - This should take a ProcessedMemberBase and not much of this stuff - https://github.com/mono/Embeddinator-4000/issues/276
+		public override string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
+		{
+			if (Method.IsSpecialName)
+				objName = objName.Replace ("_", String.Empty);
+
+			var objc = new StringBuilder (objName);
+
+			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
+			for (int n = 0; n < end; ++n) {
+				ParameterInfo p = parameters[n];
+
+				if (objc.Length > objName.Length)
+					objc.Append (' ');
+
+				string paramName = FallBackToTypeName ? NameGenerator.GetParameterTypeName (p.ParameterType) : p.Name;
+				if (n > 0 || !isExtension) {
+					if (n == 0) {
+						if (FallBackToTypeName || Method.IsConstructor || (!Method.IsSpecialName && !IsOperator))
+							objc.Append (paramName.PascalCase ());
+					}
+					else
+						objc.Append (paramName.CamelCase ());
+				}
+
+				if (n > 0 || !isExtension) {
+					string ptname = NameGenerator.GetObjCParamTypeName (p, Processor.Types);
+					objc.Append (":(").Append (ptname).Append (")").Append (NameGenerator.GetExtendedParameterName (p, parameters));
+				}
+			}
+
+			return objc.ToString ();
+		}
 	}
 
 	public class ProcessedProperty: ProcessedMemberBase {
@@ -290,6 +309,35 @@ namespace Embeddinator {
 		}
 
 		public override string ToString () => ToString (Constructor);
+
+		// HACK - This should take a ProcessedMemberBase and not much of this stuff - https://github.com/mono/Embeddinator-4000/issues/276
+		public override string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
+		{
+			var objc = new StringBuilder (objName);
+
+			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
+			for (int n = 0; n < end; ++n) {
+				ParameterInfo p = parameters[n];
+
+				if (objc.Length > objName.Length)
+					objc.Append (' ');
+
+				string paramName = FallBackToTypeName ? NameGenerator.GetParameterTypeName (p.ParameterType) : p.Name;
+				if (n > 0 || !isExtension) {
+					if (n == 0)
+						objc.Append (paramName.PascalCase ());
+					else
+						objc.Append (paramName.CamelCase ());
+				}
+
+				if (n > 0 || !isExtension) {
+					string ptname = NameGenerator.GetObjCParamTypeName (p, Processor.Types);
+					objc.Append (":(").Append (ptname).Append (")").Append (NameGenerator.GetExtendedParameterName (p, parameters));
+				}
+			}
+
+			return objc.ToString ();
+		}
 	}
 
 	public class ProcessedFieldInfo : ProcessedMemberBase {
