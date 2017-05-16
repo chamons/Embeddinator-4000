@@ -1,4 +1,4 @@
-﻿﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -153,7 +153,7 @@ namespace Embeddinator {
 		// get a name that is safe to use from ObjC code
 
 		// HACK - This should take a ProcessedMemberBase and not much of this stuff - https://github.com/mono/Embeddinator-4000/issues/276
-		public void GetSignatures (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension, out string objcSignature, out string monoSignature)
+		public string GetObjcSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
 		{
 			// FIXME - GetSignatures likley should be specialized in subclasses
 			bool isOperator = (this is ProcessedMethod) ? ((ProcessedMethod)this).IsOperator : false;
@@ -163,9 +163,6 @@ namespace Embeddinator {
 				objName = objName.Replace ("_", String.Empty);
 
 			var objc = new StringBuilder (objName);
-			var mono = new StringBuilder (monoName);
-
-			mono.Append ('(');
 
 			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
 			for (int n = 0; n < end; ++n) {
@@ -173,7 +170,6 @@ namespace Embeddinator {
 
 				if (objc.Length > objName.Length) {
 					objc.Append (' ');
-					mono.Append (',');
 				}
 
 				string paramName = FallBackToTypeName ? NameGenerator.GetParameterTypeName (p.ParameterType) : p.Name;
@@ -190,13 +186,37 @@ namespace Embeddinator {
 					string ptname = NameGenerator.GetObjCParamTypeName (p, Processor.Types);
 					objc.Append (":(").Append (ptname).Append (")").Append (NameGenerator.GetExtendedParameterName (p, parameters));
 				}
+			}
+
+			return objc.ToString ();
+		}
+
+		public string GetMonoSignature (string objName, string monoName, MemberInfo info, ParameterInfo[] parameters, bool isExtension)
+		{
+			// FIXME - GetSignatures likley should be specialized in subclasses
+			bool isOperator = (this is ProcessedMethod) ? ((ProcessedMethod)this).IsOperator : false;
+			var method = (info as MethodBase); // else it's a PropertyInfo
+											   // special case for setter-only - the underscore looks ugly
+			if ((method != null) && method.IsSpecialName)
+				objName = objName.Replace ("_", String.Empty);
+
+			var mono = new StringBuilder (monoName);
+
+			mono.Append ('(');
+
+			var end = FirstDefaultParameter == -1 ? parameters.Length : FirstDefaultParameter;
+			for (int n = 0; n < end; ++n) {
+				ParameterInfo p = parameters[n];
+			
+				if (n > 0)
+					mono.Append (',');
+
 				mono.Append (NameGenerator.GetMonoName (p.ParameterType));
 			}
 
 			mono.Append (')');
 
-			objcSignature = objc.ToString ();
-			monoSignature = mono.ToString ();
+			return mono.ToString ();
 		}
 	}
 
@@ -229,11 +249,8 @@ namespace Embeddinator {
 		public override void ComputeSignatures ()
 		{
 			// FIXME this is a quite crude hack waiting for a correct move of the signature code
-			string objcsig;
-			string monosig;
-			GetSignatures (BaseName, Method.Name, Method, Method.GetParameters (), false, out objcsig, out monosig);
-			ObjCSignature = objcsig;
-			MonoSignature = monosig;
+			ObjCSignature = GetObjcSignature (BaseName, Method.Name, Method, Method.GetParameters (), false);
+			MonoSignature = GetMonoSignature (BaseName, Method.Name, Method, Method.GetParameters (), false);
 		}
 
 		public override string ToString () => ToString (Method);
@@ -279,11 +296,8 @@ namespace Embeddinator {
 		public override void ComputeSignatures ()
 		{
 			// FIXME this is a quite crude hack waiting for a correct move of the signature code
-			string objcsig;
-			string monosig;
-			GetSignatures (Constructor.ParameterCount == 0 ? "init" : "initWith", Constructor.Name, Constructor, Constructor.GetParameters (), false, out objcsig, out monosig);
-			ObjCSignature = objcsig;
-			MonoSignature = monosig;
+			ObjCSignature = GetObjcSignature (Constructor.ParameterCount == 0 ? "init" : "initWith", Constructor.Name, Constructor, Constructor.GetParameters (), false);
+			MonoSignature = GetMonoSignature (Constructor.ParameterCount == 0 ? "init" : "initWith", Constructor.Name, Constructor, Constructor.GetParameters (), false);
 		}
 
 		public override string ToString () => ToString (Constructor);
