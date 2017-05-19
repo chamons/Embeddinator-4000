@@ -69,7 +69,7 @@ namespace Embeddinator {
 			var os = new OptionSet {
 				{ "c|compile", "Compiles the generated output", v => embedder.CompileCode = true },
 				{ "d|debug", "Build the native library with debug information.", v => embedder.Debug = true },
-				{ "gen=", $"Target generator (default {embedder.TargetLanguage})", v => embedder.SetTarget (v) },
+				{ "gen=", $"Target generator", v => embedder.SetTarget (v) },
 				{ "abi=", "A comma-separated list of ABIs to compile. If not specified, all ABIs applicable to the selected platform will be built. Valid values (also depends on platform): i386, x86_64, armv7, armv7s, armv7k, arm64.", (v) =>
 					{
 						embedder.ABIs.AddRange (v.Split (',').Select ((a) => a.ToLowerInvariant ()));
@@ -109,6 +109,9 @@ namespace Embeddinator {
 			};
 
 			var assemblies = os.Parse (args);
+			embedder.SetValidDefaults ();
+
+			CheckForInvalidOptions ();
 
 			if (action == Action.None && assemblies.Count > 0)
 				action = Action.Generate;
@@ -138,6 +141,25 @@ namespace Embeddinator {
 				}
 			default:
 				throw ErrorHelper.CreateError (99, "Internal error: invalid action {0}. Please file a bug report with a test case (https://github.com/mono/Embeddinator-4000/issues)", action);
+			}
+		}
+
+		static void CheckForInvalidOptions ()
+		{
+			switch (CurrentEmbedder.Platform) {
+			case Platform.iOS:
+			case Platform.tvOS:
+			case Platform.watchOS:
+			case Platform.macOSFull:
+			case Platform.macOSModern:
+			case Platform.macOSSystem:
+				if (CurrentEmbedder.CompilationTarget != CompilationTarget.Framework)
+					throw ErrorHelper.CreateError (27, "Embedded Xamarin.Mac/Xamarin.iOS only supports the Framework compilation option.");
+				break;
+			case Platform.macOS:
+				if (CurrentEmbedder.CompilationTarget != CompilationTarget.SharedLibrary)
+					throw ErrorHelper.CreateError (28, "Non-embedded macOS only supports the Library compilation option.");
+				break;
 			}
 		}
 	}
@@ -256,9 +278,41 @@ namespace Embeddinator {
 		}
 
 		public List<Assembly> Assemblies { get; private set; } = new List<Assembly> ();
-		public Platform Platform { get; set; } = Platform.macOS;
-		public TargetLanguage TargetLanguage { get; private set; } = TargetLanguage.ObjectiveC;
-		public CompilationTarget CompilationTarget { get; set; } = CompilationTarget.SharedLibrary;
+
+		Platform? platform;
+		public Platform Platform { get { return platform.Value; } set { platform = value; } }
+
+		TargetLanguage? targetLanguage;
+		public TargetLanguage TargetLanguage { get { return targetLanguage.Value; } set { targetLanguage = value; } }
+
+		CompilationTarget? compilationTarget;
+		public CompilationTarget CompilationTarget { get { return compilationTarget.Value; } set { compilationTarget = value; } }
+
+		public void SetValidDefaults ()
+		{
+			if (!targetLanguage.HasValue)
+				TargetLanguage = TargetLanguage.ObjectiveC;
+
+			if (!platform.HasValue)
+				Platform = Platform.macOS;
+
+			if (!compilationTarget.HasValue) {
+				switch (Platform) {
+				case Platform.macOS:
+					CompilationTarget = CompilationTarget.SharedLibrary;
+					break;
+				case Platform.macOSFull:
+				case Platform.macOSModern:
+				case Platform.macOSSystem:
+				case Platform.iOS:
+				case Platform.tvOS:
+				case Platform.watchOS:
+				default:
+					CompilationTarget = CompilationTarget.Framework;
+					break;
+				}
+			}
+		}
 
 		public string PlatformSdkDirectory {
 			get {
