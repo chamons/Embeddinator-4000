@@ -207,7 +207,10 @@ namespace ExecutionTests
 			args.Add (dll_path);
 			args.Add ("-c");
 			args.Add ($"--outdir={outdir}");
-			args.Add ("--target=framework");
+			if (platform == Platform.macOS)
+				args.Add ("--target=library");
+			else
+				args.Add ("--target=framework");
 			args.Add ($"--platform={platform}");
 			args.Add ($"--abi={abi}");
 			Asserts.Generate ("generate", args.ToArray ());

@@ -133,7 +133,7 @@ namespace DriverTest {
 				Driver.Main2 (new [] { "--target=staticlibrary" });
 			} catch (EmbeddinatorException ee) {
 				Assert.True (ee.Error, "Error");
-				Assert.That (ee.Code, Is.EqualTo (2), "Code");
+				Assert.That (ee.Code, Is.EqualTo (28), "Code");
 			}
 		}
 
