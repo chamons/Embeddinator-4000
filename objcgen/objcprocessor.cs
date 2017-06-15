@@ -33,6 +33,7 @@ namespace ObjC {
 		ProcessedType system_iformatprovider;
 		ProcessedType system_timespan;
 		ProcessedType system_globalization_timespanstyles;
+		ProcessedType system_datetime;
 
 		ProcessedAssembly GetMscorlib (Type t)
 		{
@@ -64,10 +65,43 @@ namespace ObjC {
 			var string_type = corlib.Assembly.GetType ("System.String");
 			var iformatprovider_type = corlib.Assembly.GetType ("System.IFormatProvider");
 			var parse = t.GetMethod ("Parse", new Type [] { string_type, iformatprovider_type });
-			system_decimal.Methods.Add (new ProcessedMethod (parse, this));
+			system_decimal.Methods.Add (new ProcessedMethod (parse, this, system_decimal));
 			var tostring = t.GetMethod ("ToString", new Type [] { iformatprovider_type });
-			system_decimal.Methods.Add (new ProcessedMethod (tostring, this));
+			system_decimal.Methods.Add (new ProcessedMethod (tostring, this, system_decimal));
 			AddExtraType (system_decimal);
+			return true;
+		}
+
+		bool AddDateTimeSupport (Type t)
+		{
+			if (system_datetime != null)
+				return true;
+
+			var corlib = GetMscorlib (t);
+			system_datetime = new ProcessedType (t) {
+				Assembly = corlib,
+				// this is tracked because the linker (if enabled) needs to be aware of the requirement
+				// but we do not want any code to be generated (it's referenced only from native/glue code)
+				IsNativeReference = true,
+				Methods = new List<ProcessedMethod> (),
+				Properties = new List<ProcessedProperty> (),
+				Constructors = new List<ProcessedConstructor> (),
+			};
+			var ticks = t.GetProperty ("Ticks");
+			system_datetime.Properties.Add (new ProcessedProperty (ticks, this, system_datetime));
+
+			var kind = t.GetProperty ("Kind");
+			system_datetime.Properties.Add (new ProcessedProperty (kind, this, system_datetime));
+
+			var dtk = corlib.Assembly.GetType ("System.DateTimeKind");
+			var longT = corlib.Assembly.GetType ("System.Int64");
+			var ctorLongKind = t.GetConstructor (new Type [] { longT, dtk });
+			system_datetime.Constructors.Add (new ProcessedConstructor (ctorLongKind, this, system_datetime));
+
+			var toUniversalTime = t.GetMethod ("ToUniversalTime");
+			system_datetime.Methods.Add (new ProcessedMethod (toUniversalTime, this, system_datetime));
+
+			AddExtraType (system_datetime);
 			return true;
 		}
 
@@ -104,12 +138,10 @@ namespace ObjC {
 					Delayed.Add (ErrorHelper.CreateWarning (1011, $"Type `{t}` is not generated because it lacks a native counterpart."));
 					unsupported.Add (t);
 					return false;
-				case "DateTime": // FIXME: NSDateTime
-					Delayed.Add (ErrorHelper.CreateWarning (1012, $"Type `{t}` is not generated because it lacks a marshaling code with a native counterpart."));
-					unsupported.Add (t);
-					return false;
 				case "Decimal":
 					return AddDecimalSupport (t);
+				case "DateTime":
+					return AddDateTimeSupport (t);
 				case "TimeSpan":
 					if (system_timespan == null) {
 						system_timespan = new ProcessedType (t) {
@@ -162,8 +194,10 @@ namespace ObjC {
 			}
 		}
 
-		protected IEnumerable<ConstructorInfo> GetConstructors (Type t)
+		protected IEnumerable<ProcessedConstructor> GetConstructors (ProcessedType processedType)
 		{
+			Type t = processedType.Type;
+
 			foreach (var ctor in t.GetConstructors ()) {
 				// .cctor not to be called directly by native code
 				if (ctor.IsStatic)
@@ -184,7 +218,7 @@ namespace ObjC {
 				if (!pcheck)
 					continue;
 
-				yield return ctor;
+				yield return new ProcessedConstructor (ctor, this, processedType);
 			}
 		}
 
@@ -217,7 +251,7 @@ namespace ObjC {
 				}
 
 				if (mi.Match ("System.Boolean", "Equals", "System.Object")) {
-					yield return new ProcessedMethod (mi, this) {
+					yield return new ProcessedMethod (mi, this, type) {
 						DeclaringType = type,
 						MethodType = MethodType.NSObjectProcotolIsEqual,
 					};
@@ -225,7 +259,7 @@ namespace ObjC {
 				} 
 
 				if (implement_system_iequatable_t && mi.Match ("System.Boolean", "Equals", new string [] { null })) {
-					yield return new ProcessedMethod (mi, this) {
+					yield return new ProcessedMethod (mi, this, type) {
 						DeclaringType = type,
 						MethodType = MethodType.IEquatable,
 					};
@@ -233,7 +267,7 @@ namespace ObjC {
 				}
 
 				if (mi.Match ("System.Int32", "GetHashCode")) {
-					yield return new ProcessedMethod (mi, this) {
+					yield return new ProcessedMethod (mi, this, type) {
 						DeclaringType = type,
 						MethodType = MethodType.NSObjectProcotolHash,
 					};
@@ -275,12 +309,12 @@ namespace ObjC {
 							extmethods = new List<ProcessedMethod> ();
 							extensions.Add (extended_type, extmethods);
 						}
-						extmethods.Add (new ProcessedMethod  (mi, this));
+						extmethods.Add (new ProcessedMethod  (mi, this, type) { IsExtension = true } );
 						continue;
 					}
 				}
 
-				yield return new ProcessedMethod (mi, this);
+				yield return new ProcessedMethod (mi, this, type);
 			}
 		}
 
@@ -296,9 +330,9 @@ namespace ObjC {
 			}
 		}
 
-		protected IEnumerable<FieldInfo> GetFields (Type t)
+		protected IEnumerable<ProcessedFieldInfo> GetFields (ProcessedType t)
 		{
-			foreach (var fi in t.GetFields (BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
+			foreach (var fi in t.Type.GetFields (BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
 				if (!fi.IsPublic)
 					continue;
 				var ft = fi.FieldType;
@@ -306,7 +340,7 @@ namespace ObjC {
 					Delayed.Add (ErrorHelper.CreateWarning (1050, $"Field `{fi}` is not generated because of field type `{ft}` is not supported."));
 					continue;
 				}
-				yield return fi;
+				yield return new ProcessedFieldInfo (fi, this, t);
 			}
 		}
 
@@ -319,7 +353,7 @@ namespace ObjC {
 		bool extension_type;
 
 
-		public override void Process (IEnumerable<Assembly> input)
+		public override void Process (IEnumerable<ProcessedAssembly> input)
 		{
 			base.Process (input);
 
@@ -329,7 +363,7 @@ namespace ObjC {
 			// proceed with extra adjustments before giving results to the generator
 			foreach (var t in Types) {
 				foreach (var uctor in GetUnavailableParentCtors (t)) {
-					var c = new ProcessedConstructor (uctor.Constructor, this) { Unavailable = true };
+					var c = new ProcessedConstructor (uctor.Constructor, this, t) { Unavailable = true };
 					t.Constructors.Add (c);
 				}
 			}
@@ -339,7 +373,7 @@ namespace ObjC {
 				var pt = GetProcessedType (dv.DeclaringType);
 				var ci = dv as ConstructorInfo;
 				if (ci != null) {
-					foreach (var pc in AddDefaultValuesWrappers (ci)) {
+					foreach (var pc in AddDefaultValuesWrappers (ci, pt)) {
 						if (!pt.SignatureExists (pc))
 							pt.Constructors.Add (pc);
 						else
@@ -348,7 +382,7 @@ namespace ObjC {
 					continue;
 				}
 				var mi = dv as MethodInfo;
-				foreach (var pm in AddDefaultValuesWrappers (mi)) {
+				foreach (var pm in AddDefaultValuesWrappers (mi, pt)) {
 					if (!pt.SignatureExists (pm))
 						pt.Methods.Add (pm);
 					else
@@ -375,7 +409,7 @@ namespace ObjC {
 			implement_system_icomparable_t = t.Implements("System", "IComparable`1");
 			implement_system_iequatable_t = t.Implements ("System", "IEquatable`1");
 
-			var constructors = GetConstructors (t).OrderBy ((arg) => arg.ParameterCount).ToList ();
+			var constructors = GetConstructors (pt).OrderBy ((arg) => arg.Constructor.ParameterCount).ToList ();
 			var processedConstructors = PostProcessConstructors (constructors).ToList ();
 			pt.Constructors = processedConstructors;
 
@@ -383,8 +417,8 @@ namespace ObjC {
 			var processedMethods = PostProcessMethods (meths).ToList ();
 			pt.Methods = processedMethods;
 
-			var props = new List<PropertyInfo> ();
-			var subscriptProps = new List<PropertyInfo> ();
+			var props = new List<ProcessedProperty> ();
+			var subscriptProps = new List<ProcessedProperty> ();
 			foreach (var pi in GetProperties (t)) {
 				var getter = pi.GetGetMethod ();
 				var setter = pi.GetSetMethod ();
@@ -394,14 +428,14 @@ namespace ObjC {
 
 				// indexers are implemented as methods and object subscripting
 				if ((getter.ParameterCount > 0) || ((setter != null) && setter.ParameterCount > 1)) {
-					subscriptProps.Add (pi);
+					subscriptProps.Add (new ProcessedProperty (pi, this, pt));
 					continue;
 				}
 
 				// we can do better than methods for the more common cases (readonly and readwrite)
 				processedMethods.RemoveAll (x => x.Method == getter);
 				processedMethods.RemoveAll (x => x.Method == setter);
-				props.Add (pi);
+				props.Add (new ProcessedProperty (pi, this, pt));
 			}
 			props = props.OrderBy ((arg) => arg.Name).ToList ();
 			var processedProperties = PostProcessProperties (props).ToList ();
@@ -415,7 +449,7 @@ namespace ObjC {
 			}
 
 			// fields will need to be wrapped within properties
-			var f = GetFields (t).OrderBy ((arg) => arg.Name).ToList ();
+			var f = GetFields (pt).OrderBy ((arg) => arg.Name).ToList ();
 			var processedFields = PostProcessFields (f).ToList ();
 			pt.Fields = processedFields;
 		}
@@ -451,14 +485,14 @@ namespace ObjC {
 			return finalList;
 		}
 
-		IEnumerable<ProcessedConstructor> AddDefaultValuesWrappers (ConstructorInfo ci)
+		IEnumerable<ProcessedConstructor> AddDefaultValuesWrappers (ConstructorInfo ci, ProcessedType containingType)
 		{
 			// parameters with default values must be at the end and there can be many of them
 			var parameters = ci.GetParameters ();
 			for (int i = parameters.Length - 1; i >= 0; i--) {
 				if (!parameters [i].HasDefaultValue)
 					continue;
-				var pc = new ProcessedConstructor (ci, this) {
+				var pc = new ProcessedConstructor (ci, this, containingType) {
 					ConstructorType = ConstructorType.DefaultValueWrapper,
 					FirstDefaultParameter = i,
 				};
@@ -466,14 +500,14 @@ namespace ObjC {
 			}
 		}
 
-		IEnumerable<ProcessedMethod> AddDefaultValuesWrappers (MethodInfo mi)
+		IEnumerable<ProcessedMethod> AddDefaultValuesWrappers (MethodInfo mi, ProcessedType containingType)
 		{
 			// parameters with default values must be at the end and there can be many of them
 			var parameters = mi.GetParameters ();
 			for (int i = parameters.Length - 1; i >= 0; i--) {
 				if (!parameters [i].HasDefaultValue)
 					continue;
-				var pm = new ProcessedMethod (mi, this) {
+				var pm = new ProcessedMethod (mi, this, containingType) {
 					MethodType = MethodType.DefaultValueWrapper,
 					FirstDefaultParameter = i,
 				};
