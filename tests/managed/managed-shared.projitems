@@ -32,6 +32,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)nestedClasses.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)arrays.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)duplicates.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)nativeRetuns.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)subscripts.tt">
